@@ -6,6 +6,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.lang.ProcessBuilder.Redirect
 import java.nio.ByteOrder
@@ -65,6 +69,95 @@ class NpyFileTest(private val order: ByteOrder) {
         val data = arrayOf("foo", "bar", "bazooka")
         NpyFile.write(path, data)
         assertArrayEquals(data, NpyFile.read(path).asStringArray())
+    }
+
+    companion object {
+        @JvmStatic
+        @Parameters(name = "{0}")
+        fun `data`(): Collection<Any> = listOf(ByteOrder.BIG_ENDIAN,
+                                               ByteOrder.LITTLE_ENDIAN)
+    }
+}
+
+@RunWith(Parameterized::class)
+class NpyFileStreamTest(private val order: ByteOrder) {
+    @Test fun writeReadBooleans() {
+        val data = booleanArrayOf(true, true, true, false)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asBooleanArray())
+    }
+
+    @Test fun writeReadBytes() {
+        val data = byteArrayOf(1, 2, 3, 4)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asByteArray())
+    }
+
+    @Test fun writeReadShorts() {
+        val data = shortArrayOf(1, 2, 3, 4)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data, order = order)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asShortArray())
+    }
+
+    @Test fun writeReadInts() {
+        val data = intArrayOf(1, 2, 3, 4)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data, order = order)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asIntArray())
+    }
+
+    @Test fun writeReadLongs() {
+        val data = longArrayOf(1, 2, 3, 4)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data, order = order)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asLongArray())
+    }
+
+    @Test fun writeReadFloats() {
+        val data = floatArrayOf(1f, 2f, 3f, 4f)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data, order = order)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asFloatArray(), Math.ulp(1f))
+    }
+
+    @Test fun writeReadDoubles() {
+        val data = doubleArrayOf(1.0, 2.0, 3.0, 4.0)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data, order = order)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asDoubleArray(), Math.ulp(1.0))
+    }
+
+    @Suppress("unchecked_cast")
+    @Test fun writeReadStrings() {
+        val data = arrayOf("foo", "bar", "bazooka")
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(bos, data)
+        assertArrayEquals(data, NpyFile.read(ByteArrayInputStream(bos.toByteArray())).asStringArray())
+    }
+
+    @Test fun streamAndFileOutputsMatch() = withTempFile("test", ".npy") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        val bos = ByteArrayOutputStream()
+        NpyFile.write(path, data, order = order)
+        NpyFile.write(bos, data, order = order)
+        assertArrayEquals(Files.readAllBytes(path), bos.toByteArray())
+    }
+
+    @Test fun writeFileOutputStreamReadPath() = withTempFile("test", ".npy") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        FileOutputStream(path.toFile()).use { NpyFile.write(it, data, order = order) }
+        assertArrayEquals(data, NpyFile.read(path).asIntArray())
+    }
+
+    @Test fun writePathReadFileInputStream() = withTempFile("test", ".npy") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        NpyFile.write(path, data, order = order)
+        FileInputStream(path.toFile()).use { input ->
+            assertArrayEquals(data, NpyFile.read(input).asIntArray())
+        }
     }
 
     companion object {

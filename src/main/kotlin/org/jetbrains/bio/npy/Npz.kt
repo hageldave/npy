@@ -1,6 +1,10 @@
 package org.jetbrains.bio.npy
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.Channels
@@ -10,6 +14,7 @@ import java.util.*
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.math.min
 
@@ -107,16 +112,93 @@ object NpzFile {
     fun read(path: Path) = Reader(path)
 
     /**
+     * A reader for NPZ format backed by [ZipInputStream].
+     *
+     * Since [ZipInputStream] is forward-only, this reader buffers arrays in memory
+     * on first access. To support repeated reads from a network stream, callers can
+     * first cache bytes and then wrap them with [ByteArrayInputStream].
+     */
+    class StreamReader internal constructor(private val zis: ZipInputStream) : Closeable, AutoCloseable {
+        private var arrays: Map<String, NpyArray>? = null
+
+        /**
+         * Returns a mapping from array names to the corresponding
+         * scalar types in Java.
+         */
+        fun introspect(): List<NpzEntry> {
+            return readAll().map { (name, array) ->
+                NpzEntry(name, toScalarType(array), array.shape)
+            }
+        }
+
+        /**
+         * Returns an array for a given name.
+         *
+         * The caller is responsible for casting the resulting array to an
+         * appropriate type.
+         */
+        operator fun get(name: String): NpyArray {
+            return readAll()[name] ?: throw IllegalArgumentException("entry not found: $name")
+        }
+
+        private fun readAll(): Map<String, NpyArray> {
+            arrays?.let { return it }
+
+            val loaded = linkedMapOf<String, NpyArray>()
+            val chunk = ByteArray(1 shl 18)
+            var entry = zis.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    val bos = ByteArrayOutputStream()
+                    while (true) {
+                        val n = zis.read(chunk)
+                        if (n < 0) {
+                            break
+                        }
+                        bos.write(chunk, 0, n)
+                    }
+
+                    val name = entry.name.substringBeforeLast('.')
+                    loaded[name] = NpyFile.read(ByteArrayInputStream(bos.toByteArray()))
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+
+            arrays = loaded
+            return loaded
+        }
+
+        private fun toScalarType(array: NpyArray): Class<*> = when (array.data) {
+            is BooleanArray -> Boolean::class.java
+            is ByteArray -> Byte::class.java
+            is ShortArray -> Short::class.java
+            is IntArray -> Int::class.java
+            is LongArray -> Long::class.java
+            is FloatArray -> Float::class.java
+            is DoubleArray -> Double::class.java
+            is Array<*> -> String::class.java
+            else -> error("unsupported array data type: ${array.data::class.java}")
+        }
+
+        override fun close() = zis.close()
+    }
+
+    /** Opens an NPZ stream for reading. */
+    @JvmStatic
+    fun read(input: InputStream): StreamReader {
+        return StreamReader(ZipInputStream(input, Charsets.US_ASCII))
+    }
+
+    /**
      * A writer for NPZ format.
      *
      * The implementation uses a temporary [ByteBuffer] to store the
      * serialized array prior to archiving. Thus each [write] call
      * requires N extra bytes of memory for an array of N bytes.
      */
-    data class Writer internal constructor(private val path: Path, private val compressed: Boolean) :
+    data class Writer internal constructor(private val zos: ZipOutputStream, private val compressed: Boolean) :
         Closeable, AutoCloseable {
-
-        private val zos = ZipOutputStream(Files.newOutputStream(path).buffered(), Charsets.US_ASCII)
 
         @JvmOverloads
         fun write(name: String, data: BooleanArray, shape: IntArray = intArrayOf(data.size)) {
@@ -226,7 +308,15 @@ object NpzFile {
     /** Opens an NPZ file at [path] for writing. */
     @JvmStatic
     fun write(path: Path, compressed: Boolean = false): Writer {
-        return Writer(path, compressed)
+        val zos = ZipOutputStream(Files.newOutputStream(path).buffered(), Charsets.US_ASCII)
+        return Writer(zos, compressed)
+    }
+
+    /** Opens an NPZ stream for writing. */
+    @JvmStatic
+    fun write(output: OutputStream, compressed: Boolean = false): Writer {
+        val zos = ZipOutputStream(output.buffered(), Charsets.US_ASCII)
+        return Writer(zos, compressed)
     }
 }
 

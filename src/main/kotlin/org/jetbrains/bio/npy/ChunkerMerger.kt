@@ -181,8 +181,9 @@ internal class ByteArrayMerger(size: Int) : ArrayMerger<ByteArray>(ByteArray(siz
 private inline fun ByteBuffer.linked(bytes: Int, block: (ByteBuffer) -> Unit) {
     val tick = position()
     block(this)
-    val consumedCeiling = capacity() - tick
-    position(position() + (consumedCeiling - consumedCeiling % bytes))
+    val available = limit() - tick
+    val consumed = available - available % bytes
+    position(tick + consumed)
 }
 
 internal class ShortArrayMerger(size: Int) : ArrayMerger<ShortArray>(ShortArray(size)) {
