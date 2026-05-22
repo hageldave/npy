@@ -27,7 +27,13 @@ dependencies {
 
 tasks.test {
     useJUnit()
+
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
 }
+
+
 
 dokkaJavadoc {
     outputDirectory = javadoc.destinationDir
