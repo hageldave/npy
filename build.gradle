@@ -49,15 +49,15 @@ artifacts {
     archives sourcesJar, javadocJar
 }
 
-signing {
+/*signing {
     // multiline environment variables are not fun.
     def signingKey = findProperty("signingKey")?.replace("\\n", "\n")
     def signingPassword = findProperty("signingPassword")
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign configurations.archives
-}
+}*/
 
-uploadArchives {
+/*uploadArchives {
     repositories {
         mavenDeployer {
             def ossrhUsername = findProperty("ossrhUsername")
@@ -110,7 +110,7 @@ uploadArchives {
             }
         }
     }
-}
+}/*
 
 wrapper {
     gradleVersion = '6.5'
