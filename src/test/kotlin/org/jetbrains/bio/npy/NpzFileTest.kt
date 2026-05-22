@@ -7,6 +7,8 @@ import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.nio.ByteOrder
 import java.util.*
 import kotlin.test.assertEquals
@@ -231,6 +233,28 @@ class NpzFileStreamWriteReadTest(private val order: ByteOrder) {
         NpzFile.read(ByteArrayInputStream(bos.toByteArray())).use { npzf ->
             assertArrayEquals(intArrayOf(2, 2), npzf["x_i4"].shape)
             assertArrayEquals(intArrayOf(1, 2, 3, 4), npzf["x_i4"].asIntArray())
+        }
+    }
+
+    @Test fun writeFileOutputStreamReadPath() = withTempFile("test", ".npz") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        FileOutputStream(path.toFile()).use { output ->
+            NpzFile.write(output).use { it.write("x_i4", data, order = order) }
+        }
+
+        NpzFile.read(path).use { npzf ->
+            assertArrayEquals(data, npzf["x_i4"].asIntArray())
+        }
+    }
+
+    @Test fun writePathReadFileInputStream() = withTempFile("test", ".npz") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        NpzFile.write(path).use { it.write("x_i4", data, order = order) }
+
+        FileInputStream(path.toFile()).use { input ->
+            NpzFile.read(input).use { npzf ->
+                assertArrayEquals(data, npzf["x_i4"].asIntArray())
+            }
         }
     }
 

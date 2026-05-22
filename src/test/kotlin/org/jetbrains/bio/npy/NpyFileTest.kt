@@ -8,6 +8,8 @@ import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.lang.ProcessBuilder.Redirect
 import java.nio.ByteOrder
@@ -142,6 +144,20 @@ class NpyFileStreamTest(private val order: ByteOrder) {
         NpyFile.write(path, data, order = order)
         NpyFile.write(bos, data, order = order)
         assertArrayEquals(Files.readAllBytes(path), bos.toByteArray())
+    }
+
+    @Test fun writeFileOutputStreamReadPath() = withTempFile("test", ".npy") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        FileOutputStream(path.toFile()).use { NpyFile.write(it, data, order = order) }
+        assertArrayEquals(data, NpyFile.read(path).asIntArray())
+    }
+
+    @Test fun writePathReadFileInputStream() = withTempFile("test", ".npy") { path ->
+        val data = intArrayOf(1, 2, 3, 4)
+        NpyFile.write(path, data, order = order)
+        FileInputStream(path.toFile()).use { input ->
+            assertArrayEquals(data, NpyFile.read(input).asIntArray())
+        }
     }
 
     companion object {
