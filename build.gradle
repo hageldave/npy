@@ -110,7 +110,7 @@ artifacts {
             }
         }
     }
-}/*
+}*/
 
 wrapper {
     gradleVersion = '6.5'
