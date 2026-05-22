@@ -5,6 +5,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.ByteOrder
 import java.util.*
 import kotlin.test.assertEquals
@@ -169,5 +171,107 @@ class NpzFileWriteReadTest(private val order: ByteOrder) {
         @Parameters(name = "{0}")
         fun `data`(): Collection<Any> = listOf(ByteOrder.BIG_ENDIAN,
                                                ByteOrder.LITTLE_ENDIAN)
+    }
+}
+
+@RunWith(Parameterized::class)
+class NpzFileStreamWriteReadTest(private val order: ByteOrder) {
+    @Test fun basic() {
+        val booleans = booleanArrayOf(true, true, true, false)
+        val bytes = byteArrayOf(1, 2, 3, 4)
+        val ints = intArrayOf(1, 2, 3, 4)
+        val shorts = shortArrayOf(5, 6, 7, 8)
+        val floats = floatArrayOf(9.0f, 10.0f, 11.0f, 12.0f)
+        val doubles = doubleArrayOf(13.0, 14.0, 15.0, 16.0)
+        val longs = longArrayOf(17, 18, 19, 20)
+        val strings = arrayOf("foo", "bar", "bazooka")
+        val bos = ByteArrayOutputStream()
+        NpzFile.write(bos).use {
+            it.write("x_b", booleans)
+            it.write("x_i1", bytes)
+            it.write("x_i4", ints, order = order)
+            it.write("x_i2", shorts, order = order)
+            it.write("x_i8", longs, order = order)
+            it.write("x_f4", floats, order = order)
+            it.write("x_f8", doubles, order = order)
+            it.write("x_S", strings)
+        }
+
+        NpzFile.read(ByteArrayInputStream(bos.toByteArray())).use { npzf ->
+            assertArrayEquals(booleans, npzf["x_b"].asBooleanArray())
+            assertArrayEquals(bytes, npzf["x_i1"].asByteArray())
+            assertArrayEquals(ints, npzf["x_i4"].asIntArray())
+            assertArrayEquals(shorts, npzf["x_i2"].asShortArray())
+            assertArrayEquals(longs, npzf["x_i8"].asLongArray())
+            assertArrayEquals(floats, npzf["x_f4"].asFloatArray(), 0.0f)
+            assertArrayEquals(doubles, npzf["x_f8"].asDoubleArray(), 0.0)
+            assertArrayEquals(strings, npzf["x_S"].asStringArray())
+        }
+    }
+
+    @Test fun nested() {
+        val bos = ByteArrayOutputStream()
+        NpzFile.write(bos).use {
+            it.write("foo/bar/baz/x_i4", intArrayOf(1, 2, 3, 4), order = order)
+        }
+
+        NpzFile.read(ByteArrayInputStream(bos.toByteArray())).use { npzf ->
+            assertArrayEquals(intArrayOf(1, 2, 3, 4),
+                              npzf["foo/bar/baz/x_i4"].asIntArray())
+        }
+    }
+
+    @Test fun nd() {
+        val bos = ByteArrayOutputStream()
+        NpzFile.write(bos).use {
+            it.write("x_i4", intArrayOf(1, 2, 3, 4), shape = intArrayOf(2, 2),
+                     order = order)
+        }
+
+        NpzFile.read(ByteArrayInputStream(bos.toByteArray())).use { npzf ->
+            assertArrayEquals(intArrayOf(2, 2), npzf["x_i4"].shape)
+            assertArrayEquals(intArrayOf(1, 2, 3, 4), npzf["x_i4"].asIntArray())
+        }
+    }
+
+    companion object {
+        @JvmStatic
+        @Parameters(name = "{0}")
+        fun `data`(): Collection<Any> = listOf(ByteOrder.BIG_ENDIAN,
+                                               ByteOrder.LITTLE_ENDIAN)
+    }
+}
+
+class NpzStreamReaderIntrospectTest {
+    @Test fun introspect() {
+        val bos = ByteArrayOutputStream()
+        NpzFile.write(bos).use {
+            it.write("x_i4", intArrayOf(1, 2, 3, 4))
+            it.write("x_b", booleanArrayOf(true, false))
+            it.write("x_S", arrayOf("foo", "bar"))
+        }
+
+        NpzFile.read(ByteArrayInputStream(bos.toByteArray())).use { npzf ->
+            assertEquals(mapOf("x_i4" to Int::class.java,
+                               "x_b" to Boolean::class.java,
+                               "x_S" to String::class.java),
+                         npzf.introspect().associateBy({ it.name }, { it.type }))
+        }
+    }
+}
+
+class NpzStreamReaderForwardOnlyDocTest {
+    @Test fun getByName() {
+        val bos = ByteArrayOutputStream()
+        NpzFile.write(bos).use {
+            it.write("a", intArrayOf(1))
+            it.write("b", intArrayOf(2))
+        }
+
+        // StreamReader is backed by ZipInputStream, so it buffers data on first access.
+        NpzFile.read(ByteArrayInputStream(bos.toByteArray())).use { npzf ->
+            assertArrayEquals(intArrayOf(2), npzf["b"].asIntArray())
+            assertArrayEquals(intArrayOf(1), npzf["a"].asIntArray())
+        }
     }
 }

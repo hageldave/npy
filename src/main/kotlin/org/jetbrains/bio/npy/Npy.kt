@@ -1,7 +1,10 @@
 package org.jetbrains.bio.npy
 
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.channels.Channels
 import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
 import java.nio.file.Files
@@ -176,6 +179,30 @@ object NpyFile {
         }
     }
 
+    /**
+     * Reads an array in NPY format from a given stream.
+     *
+     * The caller is responsible for coercing the resulting array to
+     * an appropriate type via [NpyArray] methods.
+     */
+    @JvmStatic
+    fun read(input: InputStream, step: Int = 1 shl 18): NpyArray {
+        val channel = Channels.newChannel(input)
+        var chunk = ByteBuffer.allocate(0)
+        return read(generateSequence {
+            val buf = ByteBuffer.allocate(step)
+            buf.put(chunk)
+            val read = channel.read(buf)
+            if (read == -1 && !chunk.hasRemaining()) {
+                null
+            } else {
+                buf.flip()
+                chunk = buf.asReadOnlyBuffer()
+                chunk
+            }
+        })
+    }
+
     internal fun read(chunks: Sequence<ByteBuffer>): NpyArray {
         // XXX we have to make it peeking, because otherwise
         //     the first chunk would be gone.
@@ -228,9 +255,23 @@ object NpyFile {
 
     @JvmOverloads
     @JvmStatic
+    fun write(output: OutputStream, data: BooleanArray,
+        shape: IntArray = intArrayOf(data.size)) {
+        write(output, allocate(data, shape))
+    }
+
+    @JvmOverloads
+    @JvmStatic
     fun write(path: Path, data: ByteArray,
         shape: IntArray = intArrayOf(data.size)) {
         write(path, allocate(data, shape))
+    }
+
+    @JvmOverloads
+    @JvmStatic
+    fun write(output: OutputStream, data: ByteArray,
+        shape: IntArray = intArrayOf(data.size)) {
+        write(output, allocate(data, shape))
     }
 
     @JvmOverloads
@@ -243,10 +284,26 @@ object NpyFile {
 
     @JvmOverloads
     @JvmStatic
+    fun write(output: OutputStream, data: ShortArray,
+        shape: IntArray = intArrayOf(data.size),
+        order: ByteOrder = ByteOrder.nativeOrder()) {
+        write(output, allocate(data, shape, order))
+    }
+
+    @JvmOverloads
+    @JvmStatic
     fun write(path: Path, data: IntArray,
         shape: IntArray = intArrayOf(data.size),
         order: ByteOrder = ByteOrder.nativeOrder()) {
         write(path, allocate(data, shape, order))
+    }
+
+    @JvmOverloads
+    @JvmStatic
+    fun write(output: OutputStream, data: IntArray,
+        shape: IntArray = intArrayOf(data.size),
+        order: ByteOrder = ByteOrder.nativeOrder()) {
+        write(output, allocate(data, shape, order))
     }
 
     @JvmOverloads
@@ -259,10 +316,26 @@ object NpyFile {
 
     @JvmOverloads
     @JvmStatic
+    fun write(output: OutputStream, data: LongArray,
+        shape: IntArray = intArrayOf(data.size),
+        order: ByteOrder = ByteOrder.nativeOrder()) {
+        write(output, allocate(data, shape, order))
+    }
+
+    @JvmOverloads
+    @JvmStatic
     fun write(path: Path, data: FloatArray,
         shape: IntArray = intArrayOf(data.size),
         order: ByteOrder = ByteOrder.nativeOrder()) {
         write(path, allocate(data, shape, order))
+    }
+
+    @JvmOverloads
+    @JvmStatic
+    fun write(output: OutputStream, data: FloatArray,
+        shape: IntArray = intArrayOf(data.size),
+        order: ByteOrder = ByteOrder.nativeOrder()) {
+        write(output, allocate(data, shape, order))
     }
 
     @JvmOverloads
@@ -275,9 +348,24 @@ object NpyFile {
 
     @JvmOverloads
     @JvmStatic
+    fun write(output: OutputStream, data: DoubleArray,
+        shape: IntArray = intArrayOf(data.size),
+        order: ByteOrder = ByteOrder.nativeOrder()) {
+        write(output, allocate(data, shape, order))
+    }
+
+    @JvmOverloads
+    @JvmStatic
     fun write(path: Path, data: Array<String>,
         shape: IntArray = intArrayOf(data.size)) {
         write(path, allocate(data, shape))
+    }
+
+    @JvmOverloads
+    @JvmStatic
+    fun write(output: OutputStream, data: Array<String>,
+        shape: IntArray = intArrayOf(data.size)) {
+        write(output, allocate(data, shape))
     }
 
     private fun write(path: Path, chunks: Sequence<ByteBuffer>) {
@@ -292,6 +380,15 @@ object NpyFile {
             }
 
             it.truncate(it.position())
+        }
+    }
+
+    private fun write(output: OutputStream, chunks: Sequence<ByteBuffer>) {
+        val channel = Channels.newChannel(output)
+        for (chunk in chunks) {
+            while (chunk.hasRemaining()) {
+                channel.write(chunk)
+            }
         }
     }
 
