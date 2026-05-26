@@ -16,7 +16,6 @@ targetCompatibility = '1.8'
 
 repositories {
     mavenCentral()
-    jcenter()
 }
 
 dependencies {
@@ -74,7 +73,7 @@ uploadArchives {
 
             beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
 
-            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+            repository(url: "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/") {
                 authentication(userName: ossrhUsername, password: ossrhPassword)
             }
 
@@ -82,25 +81,25 @@ uploadArchives {
                 authentication(userName: ossrhUsername, password: ossrhPassword)
             }
 
-            pom.groupId = 'org.jetbrains.bio'
+            pom.groupId = 'com.github.hageldave'
 
             pom.project {
                 name 'npy'
                 packaging 'jar'
                 // optionally artifactId can be defined here
                 description 'NPY and NPZ support for the JVM'
-                url 'https://github.com/JetBrains-Research/npy'
+                url 'https://github.com/hageldave/npy'
 
                 scm {
-                    connection 'scm:git:git@github.com:JetBrains-Research/npy.git'
-                    developerConnection 'scm:git:git@github.com:JetBrains-Research/npy.git'
-                    url 'https://github.com/JetBrains-Research/npy'
+                    connection 'scm:git:git@github.com:hageldave/npy.git'
+                    developerConnection 'scm:git:git@github.com:hageldave/npy.git'
+                    url 'https://github.com/hageldave/npy'
                 }
 
                 licenses {
                     license {
                         name 'MIT License'
-                        url 'https://github.com/JetBrains-Research/npy/blob/master/LICENSE'
+                        url 'https://github.com/hageldave/npy/blob/master/LICENSE'
                     }
                 }
 
@@ -114,6 +113,10 @@ uploadArchives {
                         id 'slebedev'
                         name 'Sergei Lebedev'
                         email 'sergei.a.lebedev@gmail.com'
+                    }
+                    developer {
+                        id 'hageldave'
+                        name 'David Haegele'
                     }
                 }
             }
