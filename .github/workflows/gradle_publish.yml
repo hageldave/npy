@@ -8,8 +8,9 @@
 name: Java CI with Gradle and Publish
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - v**
 
 jobs:
   deployment:
