@@ -1,0 +1,55 @@
+name: Upgrade Gradle Wrapper Engine
+
+on:
+  # Allows you to click a button in the GitHub Actions UI to trigger this manually
+  workflow_dispatch:
+
+permissions:
+  contents: write # Crucial: Allows the runner to push changes back to your branch
+
+jobs:
+  upgrade-wrapper:
+    name: "Perform Decoupled Wrapper Upgrade"
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Pull down your repository code using the modern Node 24 runtime baseline
+      - name: Checkout Source Code
+        uses: actions/checkout@v6
+
+      # 1.1 Force the runner to drop down to Java 11 temporarily so Gradle 6.5 doesn't crash
+      - name: Set up Java 11 for Legacy Wrapper Compatibility
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      # 2. Modern unified Gradle ecosystem safety validation check from the consolidated repo
+      - name: Validate Original Wrapper Files
+        uses: gradle/actions/wrapper-validation@v6
+
+      # 3. Upgrade the Wrapper Engine without evaluating your build.gradle script
+      # By pointing the build definition file (-b) to /dev/null, the old Gradle 6.5 engine
+      # treats your build configuration as an empty file, eliminating script parsing crashes.
+      - name: Run Force Upgrade Routine
+        run: |
+          # Hide your real build file so Gradle 6.5 can't evaluate it
+          mv build.gradle build.gradle.bak
+          
+          # Run the upgrade in a completely "blank" project context
+          ./gradlew wrapper --gradle-version 8.5
+          
+          # Instantly put your real build file back where it belongs
+          mv build.gradle.bak build.gradle
+
+      # 4. Save and commit the binary configuration changes back into your Git branch history
+      - name: Commit and Push 7.6 Engine
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add gradle/wrapper/gradle-wrapper.properties
+          git add gradle/wrapper/gradle-wrapper.jar
+          
+          git commit -m "chore: force update gradle runtime wrapper engine to 8.5"
+          git push
