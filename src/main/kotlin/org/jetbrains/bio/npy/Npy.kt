@@ -368,6 +368,7 @@ object NpyFile {
         write(output, allocate(data, shape))
     }
 
+    @JvmSynthetic
     private fun write(path: Path, chunks: Sequence<ByteBuffer>) {
         FileChannel.open(path,
             StandardOpenOption.WRITE,
@@ -383,6 +384,7 @@ object NpyFile {
         }
     }
 
+    @JvmSynthetic
     private fun write(output: OutputStream, chunks: Sequence<ByteBuffer>) {
         val channel = Channels.newChannel(output)
         for (chunk in chunks) {
