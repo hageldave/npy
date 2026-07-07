@@ -42,7 +42,8 @@ object NpyFile {
         val order: ByteOrder? = null,
         val type: Char,
         val bytes: Int,
-        val shape: IntArray
+        val shape: IntArray,
+        val fortranOrder: Boolean = false
     ) {
         /** Major version number. */
         val major: Int
@@ -57,7 +58,7 @@ object NpyFile {
         init {
             val metaUnpadded = StringJoiner(", ", "{", "}")
                 .add("'descr': '${order.toChar()}$type$bytes'")
-                .add("'fortran_order': False")
+                .add("'fortran_order': ${if (fortranOrder) "True" else "False"}")
                 .add("'shape': (${shape.joinToString(",")}, )")
                 .toString()
 
@@ -105,11 +106,12 @@ object NpyFile {
             else -> {
                 order == other.order &&
                         type == other.type && bytes == other.bytes &&
-                        shape.contentEquals(other.shape)
+                    fortranOrder == other.fortranOrder &&
+                    shape.contentEquals(other.shape)
             }
         }
 
-        override fun hashCode() = Objects.hash(order, type, bytes, Arrays.hashCode(shape))
+        override fun hashCode() = Objects.hash(order, type, bytes, fortranOrder, Arrays.hashCode(shape))
 
         companion object {
             /** Each NPY file *must* start with this byte sequence. */
@@ -139,13 +141,16 @@ object NpyFile {
                 val s = String(header)
                 val meta = parseDict(s)
                 val type = meta["descr"] as String
-                check(!(meta["fortran_order"] as Boolean)) {
-                    "Fortran-contiguous arrays are not supported"
-                }
-
+                val fortranOrder = meta["fortran_order"] as Boolean
                 val shape = (meta["shape"] as List<Int>).toIntArray()
                 val order = type[0].toByteOrder()
-                Header(order = order, type = type[1], bytes = type.substring(2).toInt(), shape = shape)
+                Header(
+                    order = order,
+                    type = type[1],
+                    bytes = type.substring(2).toInt(),
+                    shape = shape,
+                    fortranOrder = fortranOrder
+                )
             }
         }
     }
@@ -240,7 +245,25 @@ object NpyFile {
             merger(chunk)
         }
 
-        return NpyArray(merger.result(), header.shape)
+        val rawData = merger.result()
+        val data = if (header.fortranOrder && header.shape.size > 1) {
+            val indexMap = fortranToCOrderIndex(header.shape)
+            when (rawData) {
+                is BooleanArray -> reorderFortranToC(rawData, indexMap)
+                is ByteArray -> reorderFortranToC(rawData, indexMap)
+                is ShortArray -> reorderFortranToC(rawData, indexMap)
+                is IntArray -> reorderFortranToC(rawData, indexMap)
+                is LongArray -> reorderFortranToC(rawData, indexMap)
+                is FloatArray -> reorderFortranToC(rawData, indexMap)
+                is DoubleArray -> reorderFortranToC(rawData, indexMap)
+                is Array<*> -> reorderFortranToCStringArray(rawData, indexMap)
+                else -> rawData
+            }
+        } else {
+            rawData
+        }
+
+        return NpyArray(data, header.shape)
     }
 
     /**
@@ -445,6 +468,106 @@ object NpyFile {
         return sequenceOf(header.allocate()) + StringArrayChunker(data)
     }
 }
+
+internal fun fortranToCOrderIndex(shape: IntArray): IntArray {
+    val n = shape.size
+    val total = shape.fold(1) { acc, s -> acc * s }
+
+    val cStrides = IntArray(n)
+    var acc = 1
+    for (d in n - 1 downTo 0) {
+        cStrides[d] = acc
+        acc *= shape[d]
+    }
+
+    val fStrides = IntArray(n)
+    acc = 1
+    for (d in 0 until n) {
+        fStrides[d] = acc
+        acc *= shape[d]
+    }
+
+    val order = IntArray(total)
+    for (i in 0 until total) {
+        var remaining = i
+        var fIndex = 0
+        for (d in 0 until n) {
+            val idx = remaining / cStrides[d]
+            remaining %= cStrides[d]
+            fIndex += idx * fStrides[d]
+        }
+        order[i] = fIndex
+    }
+    return order
+}
+
+internal fun reorderFortranToC(src: BooleanArray, indexMap: IntArray): BooleanArray {
+    val dst = BooleanArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: ByteArray, indexMap: IntArray): ByteArray {
+    val dst = ByteArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: ShortArray, indexMap: IntArray): ShortArray {
+    val dst = ShortArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: IntArray, indexMap: IntArray): IntArray {
+    val dst = IntArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: LongArray, indexMap: IntArray): LongArray {
+    val dst = LongArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: FloatArray, indexMap: IntArray): FloatArray {
+    val dst = FloatArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: DoubleArray, indexMap: IntArray): DoubleArray {
+    val dst = DoubleArray(src.size)
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+internal fun reorderFortranToC(src: Array<String>, indexMap: IntArray): Array<String> {
+    val dst = Array(src.size) { "" }
+    for (i in indexMap.indices) {
+        dst[i] = src[indexMap[i]]
+    }
+    return dst
+}
+
+@Suppress("UNCHECKED_CAST")
+internal fun reorderFortranToCStringArray(src: Array<*>, indexMap: IntArray): Array<String> =
+    reorderFortranToC(src as Array<String>, indexMap)
 
 /** A wrapper for NPY array data. */
 class NpyArray(

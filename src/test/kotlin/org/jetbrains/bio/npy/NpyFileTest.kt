@@ -12,6 +12,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.lang.ProcessBuilder.Redirect
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -189,6 +190,70 @@ class NpyFileNDTest(private val shape: IntArray) {
     }
 }
 
+class NpyFileFortranOrderTest {
+    @Test fun readIntsReordersFortranDataToCOrder() = withTempFile("test", ".npy") { path ->
+        Files.write(
+            path,
+            fortranNpyBytes(
+                shape = intArrayOf(2, 3),
+                data = intArrayOf(1, 4, 2, 5, 3, 6),
+                order = ByteOrder.LITTLE_ENDIAN
+            )
+        )
+
+        val array = NpyFile.read(path)
+        assertArrayEquals(intArrayOf(2, 3), array.shape)
+        assertArrayEquals(intArrayOf(1, 2, 3, 4, 5, 6), array.asIntArray())
+    }
+
+    @Test fun readStringsReordersFortranDataToCOrder() {
+        val input = ByteArrayInputStream(
+            fortranNpyBytes(
+                shape = intArrayOf(2, 2),
+                data = arrayOf("aa", "ccc", "b", "d")
+            )
+        )
+
+        val array = NpyFile.read(input)
+        assertArrayEquals(intArrayOf(2, 2), array.shape)
+        assertArrayEquals(arrayOf("aa", "b", "ccc", "d"), array.asStringArray())
+    }
+
+    private fun fortranNpyBytes(shape: IntArray, data: IntArray, order: ByteOrder): ByteArray {
+        val header = NpyFile.Header(
+            order = order,
+            type = 'i',
+            bytes = Integer.BYTES,
+            shape = shape,
+            fortranOrder = true
+        ).allocate()
+        val body = ByteBuffer.allocate(data.size * Integer.BYTES).order(order)
+        body.asIntBuffer().put(data)
+        return header.toByteArray() + body.array()
+    }
+
+    private fun fortranNpyBytes(shape: IntArray, data: Array<String>): ByteArray {
+        val bytes = data.maxOfOrNull { it.length } ?: 0
+        val header = NpyFile.Header(
+            order = null,
+            type = 'S',
+            bytes = bytes,
+            shape = shape,
+            fortranOrder = true
+        ).allocate()
+        val body = ByteBuffer.allocate(data.size * bytes)
+        data.forEach { body.put(it.toByteArray(Charsets.US_ASCII).copyOf(bytes)) }
+        return header.toByteArray() + body.array()
+    }
+
+    private fun ByteBuffer.toByteArray(): ByteArray {
+        val copy = duplicate()
+        val bytes = ByteArray(copy.remaining())
+        copy.get(bytes)
+        return bytes
+    }
+}
+
 class NpyFileHeaderTest {
     @Test fun isPadded() {
         val header = NpyFile.Header(type = 'i', bytes = 4, shape = intArrayOf(42))
@@ -243,6 +308,19 @@ class NpyFileNumPyTest {
                     "python", "-c", "import numpy as np; print(np.load('$path'))")
             assertEquals(0, rc)
             assertEquals("[1 2 3 4]", output.trim())
+        }
+    }
+    
+    @Test fun readFortran() {
+        Assume.assumeTrue(hasNumPy)
+
+        withTempFile("test", ".npy") { path ->
+            val (rc, output) = command(
+                    "python", "-c", "import numpy as np; np.save('$path', np.asfortranarray(np.hstack((np.ones((3,5))*.4,np.ones((3,2))))))")
+            assertEquals(0, rc)
+            val array = NpyFile.read(path)
+            val floats = array.asDoubleArray().copyOf(7) 
+            assertArrayEquals(doubleArrayOf(.4, .4, .4, .4, .4, 1.0, 1.0), floats, 0.0001)
         }
     }
 
