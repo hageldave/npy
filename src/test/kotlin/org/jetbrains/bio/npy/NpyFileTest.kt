@@ -319,8 +319,8 @@ class NpyFileNumPyTest {
                     "python", "-c", "import numpy as np; np.save('$path', np.asfortranarray(np.hstack((np.ones((3,5))*.4,np.ones((3,2))))))")
             assertEquals(0, rc)
             val array = NpyFile.read(path)
-            val floats = array.asFloatArray().copyOf(7) 
-            assertArrayEquals(floatArrayOf(.4f, .4f, .4f, .4f, .4f, 1f, 1f), floats, 0.0001f)
+            val floats = array.asDoubleArray().copyOf(7) 
+            assertArrayEquals(doubleArrayOf(.4, .4, .4, .4, .4, 1.0, 1.0), floats, 0.0001)
         }
     }
 
